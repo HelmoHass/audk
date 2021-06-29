@@ -2,7 +2,7 @@
 *  Main file supporting the SEC Phase for Versatile Express
 *
 *  Copyright (c) 2008 - 2009, Apple Inc. All rights reserved.<BR>
-*  Copyright (c) 2011-2014, ARM Limited. All rights reserved.
+*  Copyright (c) 2011-2021, Arm Limited. All rights reserved.<BR>
 *  Copyright (c) 2016 HP Development Company, L.P.
 *
 *  SPDX-License-Identifier: BSD-2-Clause-Patent
@@ -94,7 +94,7 @@ InitializeCpuExceptionHandlers(
 
   Status = EFI_SUCCESS;
 
-  // if we are requested to copy exceptin handlers to another location
+  // if we are requested to copy exception handlers to another location
   if (gArmRelocateVectorTable) {
 
     VectorBase = PcdGet64(PcdCpuVectorBaseAddress);
@@ -131,7 +131,7 @@ InitializeCpuExceptionHandlers(
 }
 
 /**
-Copies exception handlers to the speciifed address.
+Copies exception handlers to the specified address.
 
 Caller should try to get an array of interrupt and/or exception vectors that are in use and need to
 persist by EFI_VECTOR_HANDOFF_INFO defined in PI 1.3 specification.
@@ -253,7 +253,8 @@ RETURN_STATUS
 RegisterCpuInterruptHandler(
   IN EFI_EXCEPTION_TYPE             ExceptionType,
   IN EFI_CPU_INTERRUPT_HANDLER      ExceptionHandler
-  ) {
+  )
+{
   if (ExceptionType > gMaxExceptionNumber) {
     return RETURN_UNSUPPORTED;
   }

@@ -180,11 +180,13 @@ AllocatePool (
   // Verify that there is sufficient memory to satisfy the allocation
   //
   if (AllocationSize > 0x10000) {
-    // Please call AllcoatePages for big allocations
+    // Please call AllocatePages for big allocations
     return 0;
   } else {
 
-    Hob = (EFI_HOB_MEMORY_POOL *)CreateHob (EFI_HOB_TYPE_MEMORY_POOL, (UINT16)(sizeof (EFI_HOB_TYPE_MEMORY_POOL) + AllocationSize));
+    Hob = (EFI_HOB_MEMORY_POOL *)CreateHob (EFI_HOB_TYPE_MEMORY_POOL,
+                                   (UINT16)(sizeof (EFI_HOB_MEMORY_POOL) +
+                                            AllocationSize));
     return (VOID *)(Hob + 1);
   }
 }

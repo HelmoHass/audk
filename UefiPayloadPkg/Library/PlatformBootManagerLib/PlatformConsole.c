@@ -8,6 +8,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 #include "PlatformBootManager.h"
 #include "PlatformConsole.h"
+#include <Guid/SerialPortLibVendor.h>
 
 #define PCI_DEVICE_PATH_NODE(Func, Dev) \
   { \
@@ -43,6 +44,9 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #define gPnp16550ComPort \
   PNPID_DEVICE_PATH_NODE(0x0501)
 
+#define gPnpPs2Keyboard \
+  PNPID_DEVICE_PATH_NODE(0x0303)
+
 #define gUartVendor \
   { \
     { \
@@ -53,7 +57,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
         (UINT8) ((sizeof (VENDOR_DEVICE_PATH)) >> 8) \
       } \
     }, \
-    {0xD3987D4B, 0x971A, 0x435F, {0x8C, 0xAF, 0x49, 0x67, 0xEB, 0x62, 0x72, 0x41}} \
+    EDKII_SERIAL_PORT_LIB_VENDOR_GUID \
   }
 
 #define gUart \
@@ -86,7 +90,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
     DEVICE_PATH_MESSAGING_PC_ANSI \
   }
 
-
+ACPI_HID_DEVICE_PATH       gPnpPs2KeyboardDeviceNode  = gPnpPs2Keyboard;
 ACPI_HID_DEVICE_PATH       gPnp16550ComPortDeviceNode = gPnp16550ComPort;
 UART_DEVICE_PATH           gUartDeviceNode            = gUart;
 VENDOR_DEVICE_PATH         gTerminalTypeDeviceNode    = gPcAnsiTerminal;
@@ -108,12 +112,15 @@ EFI_DEVICE_PATH_PROTOCOL          *gPlatformRootBridges[] = {
 BOOLEAN       mDetectVgaOnly;
 
 /**
-  Add UART to ConOut, ConIn, ErrOut.
+  Add IsaKeyboard to ConIn; add IsaSerial to ConOut, ConIn, ErrOut.
 
-  @param[in]   DeviceHandle - LPC device path.
+  @param[in] DeviceHandle  Handle of the LPC Bridge device.
 
-  @retval EFI_SUCCESS  - Serial console is added to ConOut, ConIn, and ErrOut.
-  @retval EFI_STATUS   - No serial console is added.
+  @retval EFI_SUCCESS  Console devices on the LPC bridge have been added to
+                       ConOut, ConIn, and ErrOut.
+
+  @return              Error codes, due to EFI_DEVICE_PATH_PROTOCOL missing
+                       from DeviceHandle.
 **/
 EFI_STATUS
 PrepareLpcBridgeDevicePath (
@@ -122,6 +129,7 @@ PrepareLpcBridgeDevicePath (
 {
   EFI_STATUS                Status;
   EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
+  EFI_DEVICE_PATH_PROTOCOL  *TempDevicePath;
 
   DevicePath = NULL;
   Status = gBS->HandleProtocol (
@@ -132,10 +140,18 @@ PrepareLpcBridgeDevicePath (
   if (EFI_ERROR (Status)) {
     return Status;
   }
+  TempDevicePath = DevicePath;
+
+  //
+  // Register Keyboard
+  //
+  DevicePath = AppendDevicePathNode (DevicePath, (EFI_DEVICE_PATH_PROTOCOL *)&gPnpPs2KeyboardDeviceNode);
+  EfiBootManagerUpdateConsoleVariable (ConIn, DevicePath, NULL);
 
   //
   // Register COM1
   //
+  DevicePath = TempDevicePath;
   DevicePath = AppendDevicePathNode ((EFI_DEVICE_PATH_PROTOCOL *)NULL, (EFI_DEVICE_PATH_PROTOCOL *)&gUartDeviceVendorNode);
   DevicePath = AppendDevicePathNode (DevicePath, (EFI_DEVICE_PATH_PROTOCOL *)&gUartDeviceNode);
   DevicePath = AppendDevicePathNode (DevicePath, (EFI_DEVICE_PATH_PROTOCOL *)&gTerminalTypeDeviceNode);

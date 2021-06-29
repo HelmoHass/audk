@@ -1,7 +1,7 @@
 /** @file
 Definitions for CPU S3 data.
 
-Copyright (c) 2013 - 2018, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2013 - 2020, Intel Corporation. All rights reserved.<BR>
 SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -60,14 +60,24 @@ typedef struct {
   UINT32                      MaxThreadCount;
   //
   // This field points to an array.
-  // This array saves valid core count (type UINT32) of each package.
+  // This array saves thread count (type UINT32) of each package.
   // The array has PackageCount elements.
   //
   // If the platform does not support MSR setting at S3 resume, and
   // therefore it doesn't need the dependency semaphores, it should set
   // this field to 0.
   //
-  EFI_PHYSICAL_ADDRESS        ValidCoreCountPerPackage;
+  EFI_PHYSICAL_ADDRESS        ThreadCountPerPackage;
+  //
+  // This field points to an array.
+  // This array saves thread count (type UINT8) of each core.
+  // The array has PackageCount * MaxCoreCount elements.
+  //
+  // If the platform does not support MSR setting at S3 resume, and
+  // therefore it doesn't need the dependency semaphores, it should set
+  // this field to 0.
+  //
+  EFI_PHYSICAL_ADDRESS        ThreadCountPerCore;
 } CPU_STATUS_INFORMATION;
 
 //
@@ -78,7 +88,8 @@ typedef struct {
   UINT32         Index;                 // offset 4 - 7
   UINT8          ValidBitStart;         // offset 8
   UINT8          ValidBitLength;        // offset 9
-  UINT16         Reserved;              // offset 10 - 11
+  BOOLEAN        TestThenWrite;         // offset 10
+  UINT8          Reserved1;             // offset 11
   UINT32         HighIndex;             // offset 12-15, only valid for MemoryMapped
   UINT64         Value;                 // offset 16-23
 } CPU_REGISTER_TABLE_ENTRY;
@@ -167,6 +178,8 @@ typedef struct {
   // If TableLength is > 0, then elements of RegisterTableEntry are used to
   // initialize the CPU that matches InitialApicId, during an ACPI S3 resume,
   // before SMBASE relocation is performed.
+  // If a register table is not required for any one of the CPUs, then
+  // PreSmmInitRegisterTable may be set to 0.
   //
   EFI_PHYSICAL_ADDRESS  PreSmmInitRegisterTable;
   //
@@ -176,6 +189,8 @@ typedef struct {
   // If TableLength is > 0, then elements of RegisterTableEntry are used to
   // initialize the CPU that matches InitialApicId, during an ACPI S3 resume,
   // after SMBASE relocation is performed.
+  // If a register table is not required for any one of the CPUs, then
+  // RegisterTable may be set to 0.
   //
   EFI_PHYSICAL_ADDRESS  RegisterTable;
   //

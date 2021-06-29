@@ -6,10 +6,10 @@
   The mUnixThunkTable exists so that a change to EFI_EMU_THUNK_PROTOCOL
   will cause an error in initializing the array if all the member functions
   are not added. It looks like adding a element to end and not initializing
-  it may cause the table to be initaliized with the members at the end being
+  it may cause the table to be initialized with the members at the end being
   set to zero. This is bad as jumping to zero will crash.
 
-Copyright (c) 2004 - 2009, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2004 - 2019, Intel Corporation. All rights reserved.<BR>
 Portions copyright (c) 2008 - 2011, Apple Inc. All rights reserved.<BR>
 SPDX-License-Identifier: BSD-2-Clause-Patent
 
@@ -30,7 +30,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 int settimer_initialized;
 struct timeval settimer_timeval;
-void (*settimer_callback)(UINT64 delta);
+UINTN  settimer_callback = 0;
 
 BOOLEAN gEmulatorInterruptEnabled = FALSE;
 
@@ -194,7 +194,7 @@ SecSetTimer (
   if (setitimer (ITIMER_REAL, &timerval, NULL) != 0) {
     printf ("SetTimer: setitimer error %s\n", strerror (errno));
   }
-  settimer_callback = CallBack;
+  settimer_callback = (UINTN)CallBack;
 }
 
 
@@ -363,7 +363,7 @@ SecGetTime (
   Time->Minute = tm->tm_min;
   Time->Second = tm->tm_sec;
   Time->Nanosecond = 0;
-  Time->TimeZone = timezone;
+  Time->TimeZone = timezone / 60;
   Time->Daylight = (daylight ? EFI_TIME_ADJUST_DAYLIGHT : 0)
     | (tm->tm_isdst > 0 ? EFI_TIME_IN_DAYLIGHT : 0);
 

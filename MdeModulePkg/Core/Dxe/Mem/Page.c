@@ -1265,12 +1265,13 @@ CoreInternalAllocatePages (
   IN BOOLEAN                NeedGuard
   )
 {
-  EFI_STATUS      Status;
-  UINT64          Start;
-  UINT64          NumberOfBytes;
-  UINT64          End;
-  UINT64          MaxAddress;
-  UINTN           Alignment;
+  EFI_STATUS       Status;
+  UINT64           Start;
+  UINT64           NumberOfBytes;
+  UINT64           End;
+  UINT64           MaxAddress;
+  UINTN            Alignment;
+  EFI_MEMORY_TYPE  CheckType;
 
   if ((UINT32)Type >= MaxAllocateType) {
     return EFI_INVALID_PARAMETER;
@@ -1321,6 +1322,7 @@ CoreInternalAllocatePages (
   // if (Start + NumberOfBytes) rolls over 0 or
   // if Start is above MAX_ALLOC_ADDRESS or
   // if End is above MAX_ALLOC_ADDRESS,
+  // if Start..End overlaps any tracked MemoryTypeStatistics range
   // return EFI_NOT_FOUND.
   //
   if (Type == AllocateAddress) {
@@ -1335,6 +1337,33 @@ CoreInternalAllocatePages (
         (Start > MaxAddress) ||
         (End > MaxAddress)) {
       return EFI_NOT_FOUND;
+    }
+
+    //
+    // A driver is allowed to call AllocatePages using an AllocateAddress type.  This type of
+    // AllocatePage request the exact physical address if it is not used.  The existing code
+    // will allow this request even in 'special' pages.  The problem with this is that the
+    // reason to have 'special' pages for OS hibernate/resume is defeated as memory is
+    // fragmented.
+    //
+
+    for (CheckType = (EFI_MEMORY_TYPE) 0; CheckType < EfiMaxMemoryType; CheckType++) {
+      if (MemoryType != CheckType &&
+          mMemoryTypeStatistics[CheckType].Special &&
+          mMemoryTypeStatistics[CheckType].NumberOfPages > 0) {
+        if (Start >= mMemoryTypeStatistics[CheckType].BaseAddress &&
+            Start <= mMemoryTypeStatistics[CheckType].MaximumAddress) {
+          return EFI_NOT_FOUND;
+        }
+        if (End >= mMemoryTypeStatistics[CheckType].BaseAddress &&
+            End <= mMemoryTypeStatistics[CheckType].MaximumAddress) {
+          return EFI_NOT_FOUND;
+        }
+        if (Start < mMemoryTypeStatistics[CheckType].BaseAddress &&
+            End   > mMemoryTypeStatistics[CheckType].MaximumAddress) {
+          return EFI_NOT_FOUND;
+        }
+      }
     }
   }
 
@@ -1828,8 +1857,7 @@ CoreGetMemoryMap (
       MemoryMap->VirtualStart  = 0;
       MemoryMap->NumberOfPages = RShiftU64 ((MergeGcdMapEntry.EndAddress - MergeGcdMapEntry.BaseAddress + 1), EFI_PAGE_SHIFT);
       MemoryMap->Attribute     = (MergeGcdMapEntry.Attributes & ~EFI_MEMORY_PORT_IO) |
-                                (MergeGcdMapEntry.Capabilities & (EFI_MEMORY_RP | EFI_MEMORY_WP | EFI_MEMORY_XP | EFI_MEMORY_RO |
-                                EFI_MEMORY_UC | EFI_MEMORY_UCE | EFI_MEMORY_WC | EFI_MEMORY_WT | EFI_MEMORY_WB));
+                                (MergeGcdMapEntry.Capabilities & (EFI_CACHE_ATTRIBUTE_MASK | EFI_MEMORY_ATTRIBUTE_MASK));
 
       if (MergeGcdMapEntry.GcdMemoryType == EfiGcdMemoryTypeReserved) {
         MemoryMap->Type = EfiReservedMemoryType;
@@ -1863,8 +1891,7 @@ CoreGetMemoryMap (
       MemoryMap->VirtualStart  = 0;
       MemoryMap->NumberOfPages = RShiftU64 ((MergeGcdMapEntry.EndAddress - MergeGcdMapEntry.BaseAddress + 1), EFI_PAGE_SHIFT);
       MemoryMap->Attribute     = MergeGcdMapEntry.Attributes | EFI_MEMORY_NV |
-                                (MergeGcdMapEntry.Capabilities & (EFI_MEMORY_RP | EFI_MEMORY_WP | EFI_MEMORY_XP | EFI_MEMORY_RO |
-                                EFI_MEMORY_UC | EFI_MEMORY_UCE | EFI_MEMORY_WC | EFI_MEMORY_WT | EFI_MEMORY_WB));
+                                (MergeGcdMapEntry.Capabilities & (EFI_CACHE_ATTRIBUTE_MASK | EFI_MEMORY_ATTRIBUTE_MASK));
       MemoryMap->Type          = EfiPersistentMemory;
 
       //
@@ -1897,17 +1924,16 @@ CoreGetMemoryMap (
   //       set attributes and change memory paging attribute accordingly.
   //       But current EFI_MEMORY_DESCRIPTOR.Attribute is assigned by
   //       value from Capabilities in GCD memory map. This might cause
-  //       boot problems. Clearing all paging related capabilities can
-  //       workaround it. Following code is supposed to be removed once
-  //       the usage of EFI_MEMORY_DESCRIPTOR.Attribute is clarified in
-  //       UEFI spec and adopted by both EDK-II Core and all supported
-  //       OSs.
+  //       boot problems. Clearing all page-access permission related
+  //       capabilities can workaround it. Following code is supposed to
+  //       be removed once the usage of EFI_MEMORY_DESCRIPTOR.Attribute
+  //       is clarified in UEFI spec and adopted by both EDK-II Core and
+  //       all supported OSs.
   //
   MemoryMapEnd = MemoryMap;
   MemoryMap = MemoryMapStart;
   while (MemoryMap < MemoryMapEnd) {
-    MemoryMap->Attribute &= ~(UINT64)(EFI_MEMORY_RP | EFI_MEMORY_RO |
-                                      EFI_MEMORY_XP);
+    MemoryMap->Attribute &= ~(UINT64)EFI_MEMORY_ACCESS_MASK;
     MemoryMap = NEXT_MEMORY_DESCRIPTOR (MemoryMap, Size);
   }
   MergeMemoryMap (MemoryMapStart, &BufferSize, Size);

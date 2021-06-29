@@ -56,7 +56,7 @@ TimerConstructor (
       // If the security extension is not implemented, set Timer Frequency
       // here.
       //
-      if ((ArmReadIdPfr1 () & ARM_PFR1_SEC) == 0x0) {
+      if (ArmHasSecurityExtensions ()) {
         ArmGenericTimerSetTimerFreq (PcdGet32 (PcdArmArchTimerFreqInHz));
       }
 #endif
@@ -152,7 +152,7 @@ MicroSecondDelay (
 
   @param  NanoSeconds The minimum number of nanoseconds to delay.
 
-  @return The value of NanoSeconds inputed.
+  @return The value of NanoSeconds inputted.
 
 **/
 UINTN

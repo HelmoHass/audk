@@ -64,14 +64,36 @@ DxeDebugLibConstructor(
 {
   mDebugBS = SystemTable->BootServices;
 
-  mDebugBS->CreateEventEx (
-              EVT_NOTIFY_SIGNAL,
+  mDebugBS->CreateEvent (
+              EVT_SIGNAL_EXIT_BOOT_SERVICES,
               TPL_NOTIFY,
               ExitBootServicesCallback,
               NULL,
-              &gEfiEventExitBootServicesGuid,
               &mExitBootServicesEvent
               );
+
+  return EFI_SUCCESS;
+}
+
+/**
+  The destructor closes Exit Boot Services Event.
+
+  @param  ImageHandle   The firmware allocated handle for the EFI image.
+  @param  SystemTable   A pointer to the EFI System Table.
+
+  @retval EFI_SUCCESS   The destructor always returns EFI_SUCCESS.
+
+**/
+EFI_STATUS
+EFIAPI
+DxeDebugLibDestructor(
+  IN EFI_HANDLE                 ImageHandle,
+  IN EFI_SYSTEM_TABLE           *SystemTable
+  )
+{
+  if (mExitBootServicesEvent != NULL) {
+    SystemTable->BootServices->CloseEvent (mExitBootServicesEvent);
+  }
 
   return EFI_SUCCESS;
 }

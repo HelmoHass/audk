@@ -153,7 +153,7 @@ QemuVideoControllerDriverSupported (
   }
   Card = QemuVideoDetect(Pci.Hdr.ClassCode[1], Pci.Hdr.VendorId, Pci.Hdr.DeviceId);
   if (Card != NULL) {
-    DEBUG ((EFI_D_INFO, "QemuVideo: %s detected\n", Card->Name));
+    DEBUG ((DEBUG_INFO, "QemuVideo: %s detected\n", Card->Name));
     Status = EFI_SUCCESS;
   }
 
@@ -201,11 +201,12 @@ QemuVideoControllerDriverStart (
   PCI_TYPE00                        Pci;
   QEMU_VIDEO_CARD                   *Card;
   EFI_PCI_IO_PROTOCOL               *ChildPciIo;
+  UINT64                            SupportedVgaIo;
 
   OldTpl = gBS->RaiseTPL (TPL_CALLBACK);
 
   //
-  // Allocate Private context data for GOP inteface.
+  // Allocate Private context data for GOP interface.
   //
   Private = AllocateZeroPool (sizeof (QEMU_VIDEO_PRIVATE_DATA));
   if (Private == NULL) {
@@ -278,12 +279,31 @@ QemuVideoControllerDriverStart (
   }
 
   //
+  // Get supported PCI attributes
+  //
+  Status = Private->PciIo->Attributes (
+                             Private->PciIo,
+                             EfiPciIoAttributeOperationSupported,
+                             0,
+                             &SupportedVgaIo
+                             );
+  if (EFI_ERROR (Status)) {
+    goto ClosePciIo;
+  }
+
+  SupportedVgaIo &= (UINT64)(EFI_PCI_IO_ATTRIBUTE_VGA_IO | EFI_PCI_IO_ATTRIBUTE_VGA_IO_16);
+  if (SupportedVgaIo == 0 && IS_PCI_VGA (&Pci)) {
+    Status = EFI_UNSUPPORTED;
+    goto ClosePciIo;
+  }
+
+  //
   // Set new PCI attributes
   //
   Status = Private->PciIo->Attributes (
                             Private->PciIo,
                             EfiPciIoAttributeOperationEnable,
-                            EFI_PCI_DEVICE_ENABLE | EFI_PCI_IO_ATTRIBUTE_VGA_MEMORY | EFI_PCI_IO_ATTRIBUTE_VGA_IO,
+                            EFI_PCI_DEVICE_ENABLE | EFI_PCI_IO_ATTRIBUTE_VGA_MEMORY | SupportedVgaIo,
                             NULL
                             );
   if (EFI_ERROR (Status)) {
@@ -304,10 +324,10 @@ QemuVideoControllerDriverStart (
                         );
     if (EFI_ERROR (Status) ||
         MmioDesc->ResType != ACPI_ADDRESS_SPACE_TYPE_MEM) {
-      DEBUG ((EFI_D_INFO, "QemuVideo: No mmio bar, fallback to port io\n"));
+      DEBUG ((DEBUG_INFO, "QemuVideo: No mmio bar, fallback to port io\n"));
       Private->Variant = QEMU_VIDEO_BOCHS;
     } else {
-      DEBUG ((EFI_D_INFO, "QemuVideo: Using mmio bar @ 0x%lx\n",
+      DEBUG ((DEBUG_INFO, "QemuVideo: Using mmio bar @ 0x%lx\n",
               MmioDesc->AddrRangeMin));
     }
 
@@ -332,7 +352,7 @@ QemuVideoControllerDriverStart (
     UINT16 BochsId;
     BochsId = BochsRead(Private, VBE_DISPI_INDEX_ID);
     if ((BochsId & 0xFFF0) != VBE_DISPI_ID0) {
-      DEBUG ((EFI_D_INFO, "QemuVideo: BochsID mismatch (got 0x%x)\n", BochsId));
+      DEBUG ((DEBUG_INFO, "QemuVideo: BochsID mismatch (got 0x%x)\n", BochsId));
       Status = EFI_DEVICE_ERROR;
       goto RestoreAttributes;
     }
@@ -939,7 +959,7 @@ InitializeBochsGraphicsMode (
   QEMU_VIDEO_BOCHS_MODES  *ModeData
   )
 {
-  DEBUG ((EFI_D_INFO, "InitializeBochsGraphicsMode: %dx%d @ %d\n",
+  DEBUG ((DEBUG_INFO, "InitializeBochsGraphicsMode: %dx%d @ %d\n",
           ModeData->Width, ModeData->Height, ModeData->ColorDepth));
 
   /* unblank */

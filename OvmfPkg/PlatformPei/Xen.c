@@ -64,7 +64,7 @@ XenGetE820Map (
 
 /**
   Connects to the Hypervisor.
- 
+
   @param  XenLeaf     CPUID index used to connect.
 
   @return EFI_STATUS
@@ -93,13 +93,10 @@ XenConnect (
   }
 
   AsmCpuid (XenLeaf + 1, &XenVersion, NULL, NULL, NULL);
-  DEBUG ((EFI_D_ERROR, "Detected Xen version %d.%d\n",
+  DEBUG ((DEBUG_ERROR, "Detected Xen version %d.%d\n",
           XenVersion >> 16, XenVersion & 0xFFFF));
   mXenInfo.VersionMajor = (UINT16)(XenVersion >> 16);
   mXenInfo.VersionMinor = (UINT16)(XenVersion & 0xFFFF);
-
-  /* TBD: Locate hvm_info and reserve it away. */
-  mXenInfo.HvmInfo = NULL;
 
   BuildGuidDataHob (
     &gEfiXenInfoGuid,
@@ -160,7 +157,7 @@ XenPublishRamRegions (
     return;
   }
 
-  DEBUG ((EFI_D_INFO, "Using memory map provided by Xen\n"));
+  DEBUG ((DEBUG_INFO, "Using memory map provided by Xen\n"));
 
   //
   // Parse RAM in E820 map

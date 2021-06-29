@@ -25,7 +25,9 @@
 #include <Protocol/PciRootBridgeIo.h>
 #include <Protocol/VirtioDevice.h>
 #include <Guid/EventGroup.h>
+#include <Guid/GlobalVariable.h>
 #include <Guid/RootBridgesConnectedEventGroup.h>
+#include <Guid/SerialPortLibVendor.h>
 
 #include "PlatformBm.h"
 
@@ -41,18 +43,13 @@ typedef struct {
 } PLATFORM_SERIAL_CONSOLE;
 #pragma pack ()
 
-#define SERIAL_DXE_FILE_GUID { \
-          0xD3987D4B, 0x971A, 0x435F, \
-          { 0x8C, 0xAF, 0x49, 0x67, 0xEB, 0x62, 0x72, 0x41 } \
-          }
-
 STATIC PLATFORM_SERIAL_CONSOLE mSerialConsole = {
   //
   // VENDOR_DEVICE_PATH SerialDxe
   //
   {
     { HARDWARE_DEVICE_PATH, HW_VENDOR_DP, DP_NODE_LEN (VENDOR_DEVICE_PATH) },
-    SERIAL_DXE_FILE_GUID
+    EDKII_SERIAL_PORT_LIB_VENDOR_GUID
   },
 
   //
@@ -690,7 +687,9 @@ PlatformBootManagerBeforeConsole (
   VOID
   )
 {
+  UINT16        FrontPageTimeout;
   RETURN_STATUS PcdStatus;
+  EFI_STATUS    Status;
 
   //
   // Signal EndOfDxe PI Event
@@ -748,9 +747,29 @@ PlatformBootManagerBeforeConsole (
   //
   // Set the front page timeout from the QEMU configuration.
   //
-  PcdStatus = PcdSet16S (PcdPlatformBootTimeOut,
-                GetFrontPageTimeoutFromQemu ());
+  FrontPageTimeout = GetFrontPageTimeoutFromQemu ();
+  PcdStatus = PcdSet16S (PcdPlatformBootTimeOut, FrontPageTimeout);
   ASSERT_RETURN_ERROR (PcdStatus);
+  //
+  // Reflect the PCD in the standard Timeout variable.
+  //
+  Status = gRT->SetVariable (
+                  EFI_TIME_OUT_VARIABLE_NAME,
+                  &gEfiGlobalVariableGuid,
+                  (EFI_VARIABLE_NON_VOLATILE |
+                   EFI_VARIABLE_BOOTSERVICE_ACCESS |
+                   EFI_VARIABLE_RUNTIME_ACCESS),
+                  sizeof FrontPageTimeout,
+                  &FrontPageTimeout
+                  );
+  DEBUG ((
+    EFI_ERROR (Status) ? DEBUG_ERROR : DEBUG_VERBOSE,
+    "%a: SetVariable(%s, %u): %r\n",
+    __FUNCTION__,
+    EFI_TIME_OUT_VARIABLE_NAME,
+    FrontPageTimeout,
+    Status
+    ));
 
   //
   // Register platform-specific boot options and keyboard shortcuts.
@@ -846,9 +865,17 @@ PlatformBootManagerWaitCallback (
 {
   EFI_GRAPHICS_OUTPUT_BLT_PIXEL_UNION Black;
   EFI_GRAPHICS_OUTPUT_BLT_PIXEL_UNION White;
-  UINT16                              Timeout;
+  UINT16                              TimeoutInitial;
 
-  Timeout = PcdGet16 (PcdPlatformBootTimeOut);
+  TimeoutInitial = PcdGet16 (PcdPlatformBootTimeOut);
+
+  //
+  // If PcdPlatformBootTimeOut is set to zero, then we consider
+  // that no progress update should be enacted.
+  //
+  if (TimeoutInitial == 0) {
+    return;
+  }
 
   Black.Raw = 0x00000000;
   White.Raw = 0x00FFFFFF;
@@ -858,7 +885,7 @@ PlatformBootManagerWaitCallback (
     Black.Pixel,
     L"Start boot option",
     White.Pixel,
-    (Timeout - TimeoutRemain) * 100 / Timeout,
+    (TimeoutInitial - TimeoutRemain) * 100 / TimeoutInitial,
     0
     );
 }

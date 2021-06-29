@@ -2,6 +2,7 @@
 #  Dsc file for Dynamic Tables Framework.
 #
 #  Copyright (c) 2019, Linaro Limited. All rights reserved.<BR>
+#  Copyright (c) 2019 - 2020, Arm Limited. All rights reserved.<BR>
 #
 #  SPDX-License-Identifier: BSD-2-Clause-Patent
 #
@@ -31,7 +32,20 @@
   UefiDriverEntryPoint|MdePkg/Library/UefiDriverEntryPoint/UefiDriverEntryPoint.inf
 
 [LibraryClasses.ARM, LibraryClasses.AARCH64]
+  NULL|ArmPkg/Library/CompilerIntrinsicsLib/CompilerIntrinsicsLib.inf
   PL011UartLib|ArmPlatformPkg/Library/PL011UartLib/PL011UartLib.inf
 
 [Components.common]
+  DynamicTablesPkg/Library/Common/AmlLib/AmlLib.inf
+  DynamicTablesPkg/Library/Common/SsdtSerialPortFixupLib/SsdtSerialPortFixupLib.inf
   DynamicTablesPkg/Library/Common/TableHelperLib/TableHelperLib.inf
+
+[BuildOptions]
+  *_*_*_CC_FLAGS = -D DISABLE_NEW_DEPRECATED_INTERFACES
+
+!ifdef STATIC_ANALYSIS
+  # Check all rules
+  # Inhibit C6305: Potential mismatch between sizeof and countof quantities.
+  *_VS2017_*_CC_FLAGS = /wd6305 /analyze
+!endif
+

@@ -1,6 +1,6 @@
 /** @file
 
-  Copyright (c) 2014 - 2018, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2014 - 2020, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -161,6 +161,16 @@ FspGlobalDataInit (
   SetFspSiliconInitUpdDataPointer (NULL);
 
   //
+  // Initialize OnSeparateStack value.
+  //
+  if (PcdGet8 (PcdFspHeapSizePercentage) != 0) {
+    //
+    // FSP is running on its own stack and may need switching stack when calling bootloader functions.
+    //
+    GetFspGlobalDataPointer ()->OnSeparateStack = 1;
+  }
+
+  //
   // Initialize serial port
   // It might have been done in ProcessLibraryConstructorList(), however,
   // the FSP global data is not initialized at that time. So do it again
@@ -169,7 +179,7 @@ FspGlobalDataInit (
   SerialPortInitialize ();
 
   //
-  // Ensure the golbal data pointer is valid
+  // Ensure the global data pointer is valid
   //
   ASSERT (GetFspGlobalDataPointer () == PeiFspData);
 

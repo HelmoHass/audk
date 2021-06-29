@@ -1,5 +1,5 @@
 /*++ @file
-  Stub SEC that is called from the OS appliation that is the root of the emulator.
+  Stub SEC that is called from the OS application that is the root of the emulator.
 
   The OS application will call the SEC with the PEI Entry Point API.
 
@@ -75,6 +75,7 @@ _ModuleEntryPoint (
   EFI_PEI_PPI_DESCRIPTOR    *SecPpiList;
   UINTN                     SecReseveredMemorySize;
   UINTN                     Index;
+  EFI_PEI_PPI_DESCRIPTOR    PpiArray[10];
 
   EMU_MAGIC_PAGE()->PpiList = PpiList;
   ProcessLibraryConstructorList ();
@@ -89,7 +90,7 @@ _ModuleEntryPoint (
     SecReseveredMemorySize += sizeof (EFI_PEI_PPI_DESCRIPTOR);
 
     if ((Ppi->Flags & EFI_PEI_PPI_DESCRIPTOR_TERMINATE_LIST) == EFI_PEI_PPI_DESCRIPTOR_TERMINATE_LIST) {
-      // Since we are appending, need to clear out privious list terminator.
+      // Since we are appending, need to clear out previous list terminator.
       Ppi->Flags &= ~EFI_PEI_PPI_DESCRIPTOR_TERMINATE_LIST;
       break;
     }
@@ -104,16 +105,13 @@ _ModuleEntryPoint (
   SecCoreData->PeiTemporaryRamBase = (VOID *)((UINTN)SecCoreData->PeiTemporaryRamBase + SecReseveredMemorySize);
   SecCoreData->PeiTemporaryRamSize -= SecReseveredMemorySize;
 #else
-  {
-    //
-    // When I subtrack from SecCoreData->PeiTemporaryRamBase PEI Core crashes? Either there is a bug
-    // or I don't understand temp RAM correctly?
-    //
-    EFI_PEI_PPI_DESCRIPTOR    PpiArray[10];
+  //
+  // When I subtrack from SecCoreData->PeiTemporaryRamBase PEI Core crashes? Either there is a bug
+  // or I don't understand temp RAM correctly?
+  //
 
-    SecPpiList = &PpiArray[0];
-    ASSERT (sizeof (PpiArray) >= SecReseveredMemorySize);
-  }
+  SecPpiList = &PpiArray[0];
+  ASSERT (sizeof (PpiArray) >= SecReseveredMemorySize);
 #endif
   // Copy existing list, and append our entries.
   CopyMem (SecPpiList, PpiList, sizeof (EFI_PEI_PPI_DESCRIPTOR) * Index);
@@ -138,6 +136,5 @@ _ModuleEntryPoint (
   ASSERT (FALSE);
   return;
 }
-
 
 

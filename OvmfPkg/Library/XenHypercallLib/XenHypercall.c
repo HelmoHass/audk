@@ -15,6 +15,22 @@
 #include <Library/DebugLib.h>
 #include <Library/XenHypercallLib.h>
 
+RETURN_STATUS
+EFIAPI
+XenHypercallLibConstruct (
+  VOID
+  )
+{
+  XenHypercallLibInit ();
+  //
+  // We don't fail library construction, since that has catastrophic
+  // consequences for client modules (whereas those modules may easily be
+  // running on a non-Xen platform). Instead, XenHypercallIsAvailable()
+  // will return FALSE.
+  //
+  return RETURN_SUCCESS;
+}
+
 UINT64
 EFIAPI
 XenHypercallHvmGetParam (
@@ -29,7 +45,7 @@ XenHypercallHvmGetParam (
   Error = XenHypercall2 (__HYPERVISOR_hvm_op,
                          HVMOP_get_param, (INTN) &Parameter);
   if (Error != 0) {
-    DEBUG ((EFI_D_ERROR,
+    DEBUG ((DEBUG_ERROR,
             "XenHypercall: Error %Ld trying to get HVM parameter %d\n",
             (INT64)Error, Index));
     return 0;

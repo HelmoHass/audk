@@ -2,6 +2,7 @@
   Serial I/O Port library functions with no library constructor/destructor
 
   Copyright (c) 2008 - 2009, Apple Inc. All rights reserved.<BR>
+  Copyright (c) 2021, Arm Limited. All rights reserved.<BR>
 
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
@@ -55,9 +56,12 @@ SerialPortWrite (
 )
 {
   UINT8 PrintBuffer[PRINT_BUFFER_SIZE];
-  UINTN SourceIndex      = 0;
-  UINTN DestinationIndex = 0;
+  UINTN SourceIndex;
+  UINTN DestinationIndex;
   UINT8 CurrentCharacter;
+
+  SourceIndex      = 0;
+  DestinationIndex = 0;
 
   while (SourceIndex < NumberOfBytes)
   {
@@ -103,7 +107,7 @@ SerialPortWrite (
   @param  NumberOfBytes    Number of output bytes which are cached in Buffer.
 
   @retval 0                Read data failed.
-  @retval !0               Aactual number of bytes read from serial device.
+  @retval !0               Actual number of bytes read from serial device.
 
 **/
 UINTN
@@ -120,10 +124,10 @@ SerialPortRead (
 
 
 /**
-  Check to see if any data is avaiable to be read from the debug device.
+  Check to see if any data is available to be read from the debug device.
 
-  @retval TRUE       At least one byte of data is avaiable to be read
-  @retval FALSE      No data is avaiable to be read
+  @retval TRUE       At least one byte of data is available to be read
+  @retval FALSE      No data is available to be read
 
 **/
 BOOLEAN

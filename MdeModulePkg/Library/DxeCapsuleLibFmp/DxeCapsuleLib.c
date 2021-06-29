@@ -10,7 +10,7 @@
   ValidateFmpCapsule(), and DisplayCapsuleImage() receives untrusted input and
   performs basic validation.
 
-  Copyright (c) 2016 - 2018, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2016 - 2019, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -80,6 +80,7 @@ RecordCapsuleStatusVariable (
   @param[in] PayloadIndex   FMP payload index
   @param[in] ImageHeader    FMP image header
   @param[in] FmpDevicePath  DevicePath associated with the FMP producer
+  @param[in] CapFileName    Capsule file name
 
   @retval EFI_SUCCESS          The capsule status variable is recorded.
   @retval EFI_OUT_OF_RESOURCES No resource to record the capsule status variable.
@@ -90,7 +91,8 @@ RecordFmpCapsuleStatusVariable (
   IN EFI_STATUS                                    CapsuleStatus,
   IN UINTN                                         PayloadIndex,
   IN EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER  *ImageHeader,
-  IN EFI_DEVICE_PATH_PROTOCOL                      *FmpDevicePath OPTIONAL
+  IN EFI_DEVICE_PATH_PROTOCOL                      *FmpDevicePath, OPTIONAL
+  IN CHAR16                                        *CapFileName    OPTIONAL
   );
 
 /**
@@ -108,6 +110,22 @@ EFIAPI
 UpdateImageProgress (
   IN UINTN  Completion
   );
+
+/**
+  Return if this capsule is a capsule name capsule, based upon CapsuleHeader.
+
+  @param[in] CapsuleHeader A pointer to EFI_CAPSULE_HEADER
+
+  @retval TRUE  It is a capsule name capsule.
+  @retval FALSE It is not a capsule name capsule.
+**/
+BOOLEAN
+IsCapsuleNameCapsule (
+  IN EFI_CAPSULE_HEADER         *CapsuleHeader
+  )
+{
+  return CompareGuid (&CapsuleHeader->CapsuleGuid, &gEdkiiCapsuleOnDiskNameGuid);
+}
 
 /**
   Return if this CapsuleGuid is a FMP capsule GUID or not.
@@ -267,8 +285,10 @@ ValidateFmpCapsule (
       DEBUG((DEBUG_ERROR, "ImageHeader->Version(0x%x) Unknown\n", ImageHeader->Version));
       return EFI_INVALID_PARAMETER;
     }
-    if (ImageHeader->Version < EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER_INIT_VERSION) {
+    if (ImageHeader->Version == 1) {
       FmpImageHeaderSize = OFFSET_OF(EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER, UpdateHardwareInstance);
+    } else if (ImageHeader->Version == 2) {
+      FmpImageHeaderSize = OFFSET_OF(EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER, ImageCapsuleSupport);
     }
     if (FmpImageSize < FmpImageHeaderSize) {
       DEBUG((DEBUG_ERROR, "FmpImageSize(0x%lx) < FmpImageHeaderSize(0x%x)\n", FmpImageSize, FmpImageHeaderSize));
@@ -501,8 +521,11 @@ DumpFmpCapsule (
     DEBUG((DEBUG_VERBOSE, "    UpdateImageIndex       - 0x%x\n", ImageHeader->UpdateImageIndex));
     DEBUG((DEBUG_VERBOSE, "    UpdateImageSize        - 0x%x\n", ImageHeader->UpdateImageSize));
     DEBUG((DEBUG_VERBOSE, "    UpdateVendorCodeSize   - 0x%x\n", ImageHeader->UpdateVendorCodeSize));
-    if (ImageHeader->Version >= EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER_INIT_VERSION) {
+    if (ImageHeader->Version >= 2) {
       DEBUG((DEBUG_VERBOSE, "    UpdateHardwareInstance - 0x%lx\n", ImageHeader->UpdateHardwareInstance));
+      if (ImageHeader->Version >= EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER_INIT_VERSION) {
+        DEBUG((DEBUG_VERBOSE, "    ImageCapsuleSupport    - 0x%lx\n",  ImageHeader->ImageCapsuleSupport));
+      }
     }
   }
 }
@@ -910,9 +933,14 @@ SetFmpImageData (
   } else {
     //
     // If the EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER is version 1,
-    // Header should exclude UpdateHardwareInstance field
+    // Header should exclude UpdateHardwareInstance field, and
+    // ImageCapsuleSupport field if version is 2.
     //
-    Image = (UINT8 *)ImageHeader + OFFSET_OF(EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER, UpdateHardwareInstance);
+    if (ImageHeader->Version == 1) {
+      Image = (UINT8 *)ImageHeader + OFFSET_OF(EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER, UpdateHardwareInstance);
+    } else {
+      Image = (UINT8 *)ImageHeader + OFFSET_OF(EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER, ImageCapsuleSupport);
+    }
   }
 
   if (ImageHeader->UpdateVendorCodeSize == 0) {
@@ -925,8 +953,11 @@ SetFmpImageData (
   DEBUG((DEBUG_INFO, "ImageTypeId - %g, ", &ImageHeader->UpdateImageTypeId));
   DEBUG((DEBUG_INFO, "PayloadIndex - 0x%x, ", PayloadIndex));
   DEBUG((DEBUG_INFO, "ImageIndex - 0x%x ", ImageHeader->UpdateImageIndex));
-  if (ImageHeader->Version >= EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER_INIT_VERSION) {
+  if (ImageHeader->Version >= 2) {
     DEBUG((DEBUG_INFO, "(UpdateHardwareInstance - 0x%x)", ImageHeader->UpdateHardwareInstance));
+    if (ImageHeader->Version >= EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER_INIT_VERSION) {
+      DEBUG((DEBUG_INFO, "(ImageCapsuleSupport - 0x%x)", ImageHeader->ImageCapsuleSupport));
+    }
   }
   DEBUG((DEBUG_INFO, "\n"));
 
@@ -1012,6 +1043,15 @@ StartFmpImage (
                   );
   DEBUG((DEBUG_INFO, "FmpCapsule: LoadImage - %r\n", Status));
   if (EFI_ERROR(Status)) {
+    //
+    // With EFI_SECURITY_VIOLATION retval, the Image was loaded and an ImageHandle was created
+    // with a valid EFI_LOADED_IMAGE_PROTOCOL, but the image can not be started right now.
+    // If the caller doesn't have the option to defer the execution of an image, we should
+    // unload image for the EFI_SECURITY_VIOLATION to avoid resource leak.
+    //
+    if (Status == EFI_SECURITY_VIOLATION) {
+      gBS->UnloadImage (ImageHandle);
+    }
     FreePool(DriverDevicePath);
     return Status;
   }
@@ -1034,11 +1074,12 @@ StartFmpImage (
 /**
   Record FMP capsule status.
 
-  @param[in]  Handle        A FMP handle.
+  @param[in] Handle         A FMP handle.
   @param[in] CapsuleHeader  The capsule image header
   @param[in] CapsuleStatus  The capsule process stauts
   @param[in] PayloadIndex   FMP payload index
   @param[in] ImageHeader    FMP image header
+  @param[in] CapFileName    Capsule file name
 **/
 VOID
 RecordFmpCapsuleStatus (
@@ -1046,7 +1087,8 @@ RecordFmpCapsuleStatus (
   IN EFI_CAPSULE_HEADER                            *CapsuleHeader,
   IN EFI_STATUS                                    CapsuleStatus,
   IN UINTN                                         PayloadIndex,
-  IN EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER  *ImageHeader
+  IN EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER  *ImageHeader,
+  IN CHAR16                                        *CapFileName   OPTIONAL
   )
 {
   EFI_STATUS                                    Status;
@@ -1070,7 +1112,8 @@ RecordFmpCapsuleStatus (
     CapsuleStatus,
     PayloadIndex,
     ImageHeader,
-    FmpDevicePath
+    FmpDevicePath,
+    CapFileName
     );
 
   //
@@ -1115,6 +1158,7 @@ RecordFmpCapsuleStatus (
   This function need support nested FMP capsule.
 
   @param[in]  CapsuleHeader         Points to a capsule header.
+  @param[in]  CapFileName           Capsule file name.
   @param[out] ResetRequired         Indicates whether reset is required or not.
 
   @retval EFI_SUCESS            Process Capsule Image successfully.
@@ -1126,6 +1170,7 @@ RecordFmpCapsuleStatus (
 EFI_STATUS
 ProcessFmpCapsuleImage (
   IN EFI_CAPSULE_HEADER  *CapsuleHeader,
+  IN CHAR16              *CapFileName,  OPTIONAL
   OUT BOOLEAN            *ResetRequired OPTIONAL
   )
 {
@@ -1145,7 +1190,7 @@ ProcessFmpCapsuleImage (
   BOOLEAN                                       Abort;
 
   if (!IsFmpCapsuleGuid(&CapsuleHeader->CapsuleGuid)) {
-    return ProcessFmpCapsuleImage ((EFI_CAPSULE_HEADER *)((UINTN)CapsuleHeader + CapsuleHeader->HeaderSize), ResetRequired);
+    return ProcessFmpCapsuleImage ((EFI_CAPSULE_HEADER *)((UINTN)CapsuleHeader + CapsuleHeader->HeaderSize), CapFileName, ResetRequired);
   }
 
   NotReady = FALSE;
@@ -1207,7 +1252,10 @@ ProcessFmpCapsuleImage (
     ImageHeader  = (EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER *)((UINT8 *)FmpCapsuleHeader + ItemOffsetList[Index]);
 
     UpdateHardwareInstance = 0;
-    if (ImageHeader->Version >= EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER_INIT_VERSION) {
+    ///
+    /// UpdateHardwareInstance field was added in Version 2
+    ///
+    if (ImageHeader->Version >= 2) {
       UpdateHardwareInstance = ImageHeader->UpdateHardwareInstance;
     }
 
@@ -1227,7 +1275,8 @@ ProcessFmpCapsuleImage (
         CapsuleHeader,
         EFI_NOT_READY,
         Index - FmpCapsuleHeader->EmbeddedDriverCount,
-        ImageHeader
+        ImageHeader,
+        CapFileName
         );
       continue;
     }
@@ -1239,7 +1288,8 @@ ProcessFmpCapsuleImage (
           CapsuleHeader,
           EFI_ABORTED,
           Index - FmpCapsuleHeader->EmbeddedDriverCount,
-          ImageHeader
+          ImageHeader,
+          CapFileName
           );
         continue;
       }
@@ -1262,7 +1312,8 @@ ProcessFmpCapsuleImage (
         CapsuleHeader,
         Status,
         Index - FmpCapsuleHeader->EmbeddedDriverCount,
-        ImageHeader
+        ImageHeader,
+        CapFileName
         );
     }
     if (HandleBuffer != NULL) {
@@ -1414,6 +1465,13 @@ SupportCapsuleImage (
     return EFI_SUCCESS;
   }
 
+  //
+  // Check capsule file name capsule
+  //
+  if (IsCapsuleNameCapsule(CapsuleHeader)) {
+    return EFI_SUCCESS;
+  }
+
   if (IsFmpCapsule(CapsuleHeader)) {
     //
     // Fake capsule header is valid case in QueryCapsuleCpapbilities().
@@ -1436,6 +1494,7 @@ SupportCapsuleImage (
   Caution: This function may receive untrusted input.
 
   @param[in]  CapsuleHeader         Points to a capsule header.
+  @param[in]  CapFileName           Capsule file name.
   @param[out] ResetRequired         Indicates whether reset is required or not.
 
   @retval EFI_SUCESS            Process Capsule Image successfully.
@@ -1447,6 +1506,7 @@ EFI_STATUS
 EFIAPI
 ProcessThisCapsuleImage (
   IN EFI_CAPSULE_HEADER  *CapsuleHeader,
+  IN CHAR16              *CapFileName,  OPTIONAL
   OUT BOOLEAN            *ResetRequired OPTIONAL
   )
 {
@@ -1484,7 +1544,7 @@ ProcessThisCapsuleImage (
     // Process EFI FMP Capsule
     //
     DEBUG((DEBUG_INFO, "ProcessFmpCapsuleImage ...\n"));
-    Status = ProcessFmpCapsuleImage(CapsuleHeader, ResetRequired);
+    Status = ProcessFmpCapsuleImage(CapsuleHeader, CapFileName, ResetRequired);
     DEBUG((DEBUG_INFO, "ProcessFmpCapsuleImage - %r\n", Status));
 
     return Status;
@@ -1511,7 +1571,7 @@ ProcessCapsuleImage (
   IN EFI_CAPSULE_HEADER  *CapsuleHeader
   )
 {
-  return ProcessThisCapsuleImage (CapsuleHeader, NULL);
+  return ProcessThisCapsuleImage (CapsuleHeader, NULL, NULL);
 }
 
 /**

@@ -1,7 +1,7 @@
 /** @file
   Private data structures for the Console Splitter driver
 
-Copyright (c) 2006 - 2018, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2019, Intel Corporation. All rights reserved.<BR>
 SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -217,6 +217,8 @@ typedef struct {
   TEXT_OUT_SPLITTER_QUERY_DATA          *TextOutQueryData;
   UINTN                                 TextOutQueryDataCount;
   INT32                                 *TextOutModeMap;
+
+  BOOLEAN                               AddingConOutDevice;
 
 } TEXT_OUT_SPLITTER_PRIVATE_DATA;
 
@@ -1850,7 +1852,7 @@ ConSplitterGraphicsOutputSetMode (
 
   @retval EFI_SUCCESS             The Blt operation completed.
   @retval EFI_INVALID_PARAMETER   BltOperation is not valid.
-  @retval EFI_DEVICE_ERROR        A hardware error occured writting to the video
+  @retval EFI_DEVICE_ERROR        A hardware error occurred writting to the video
                                   buffer.
 
 **/
@@ -1964,7 +1966,7 @@ ConSplitterUgaDrawSetMode (
 
   @retval EFI_SUCCESS            The Blt operation completed.
   @retval EFI_INVALID_PARAMETER  BltOperation is not valid.
-  @retval EFI_DEVICE_ERROR       A hardware error occured writting to the video buffer.
+  @retval EFI_DEVICE_ERROR       A hardware error occurred writting to the video buffer.
 
 **/
 EFI_STATUS

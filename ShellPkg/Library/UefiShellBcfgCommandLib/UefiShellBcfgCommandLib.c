@@ -38,7 +38,7 @@
 #include <Library/UefiBootManagerLib.h>
 
 STATIC CONST CHAR16 mFileName[] = L"ShellCommands";
-STATIC EFI_HANDLE gShellBcfgHiiHandle  = NULL;
+STATIC EFI_HII_HANDLE gShellBcfgHiiHandle  = NULL;
 
 typedef enum {
   BcfgTargetBootOrder    = 0,
@@ -84,7 +84,7 @@ typedef struct {
   @param[in]      Target    The target of the operation.
 
   @retval EFI_SUCCESS       The data was sucessfully updated.
-  @retval other             A error occured.
+  @retval other             A error occurred.
 **/
 EFI_STATUS
 UpdateOptionalData(
@@ -170,7 +170,7 @@ UpdateOptionalData(
   @param[in]      BootIndex   The boot option index to CRC.
 
   @retval EFI_SUCCESS           The CRC was sucessfully returned.
-  @retval other                 A error occured.
+  @retval other                 A error occurred.
 **/
 EFI_STATUS
 GetBootOptionCrc(
@@ -1019,7 +1019,7 @@ BcfgAddOpt(
   //
   // Get the index of the variable we are changing.
   //
-  Status = ShellConvertStringToUint64(Walker, &Intermediate, FALSE, TRUE);
+  Status = ShellConvertStringToUint64(Walker, &Intermediate, TRUE, TRUE);
   if (EFI_ERROR(Status) || (((UINT16)Intermediate) != Intermediate) || StrStr(Walker, L" ") == NULL || ((UINT16)Intermediate) > ((UINT16)OrderCount)) {
     ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN (STR_GEN_PARAM_INV), gShellBcfgHiiHandle, L"bcfg", L"Option Index");
     ShellStatus = SHELL_INVALID_PARAMETER;

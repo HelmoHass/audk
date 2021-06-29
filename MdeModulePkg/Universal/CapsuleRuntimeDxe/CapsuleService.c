@@ -4,7 +4,7 @@
   It installs the Capsule Architectural Protocol defined in PI1.0a to signify
   the capsule runtime services are ready.
 
-Copyright (c) 2006 - 2018, Intel Corporation. All rights reserved.<BR>
+Copyright (c) 2006 - 2020, Intel Corporation. All rights reserved.<BR>
 SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -72,6 +72,14 @@ UpdateCapsule (
   CHAR16                    *TempVarName;
 
   //
+  // Check if platform support Capsule In RAM or not.
+  // Platform could choose to drop CapsulePei/CapsuleX64 and do not support Capsule In RAM.
+  //
+  if (!PcdGetBool(PcdCapsuleInRamSupport)) {
+    return EFI_UNSUPPORTED;
+  }
+
+  //
   // Capsule Count can't be less than one.
   //
   if (CapsuleCount < 1) {
@@ -130,7 +138,7 @@ UpdateCapsule (
     // Platform specific update for the non-reset capsule image.
     //
     if ((CapsuleHeader->Flags & CAPSULE_FLAGS_PERSIST_ACROSS_RESET) == 0) {
-      if (EfiAtRuntime ()) {
+      if (EfiAtRuntime () && !FeaturePcdGet (PcdSupportProcessCapsuleAtRuntime)) {
         Status = EFI_OUT_OF_RESOURCES;
       } else {
         Status = ProcessCapsuleImage(CapsuleHeader);
@@ -218,6 +226,8 @@ UpdateCapsule (
 
 /**
   Returns if the capsule can be supported via UpdateCapsule().
+  Notice: When PcdCapsuleInRamSupport is unsupported, even this routine returns a valid answer,
+  the capsule still is unsupported via UpdateCapsule().
 
   @param  CapsuleHeaderArray    Virtual pointer to an array of virtual pointers to the capsules
                                 being passed into update capsule.

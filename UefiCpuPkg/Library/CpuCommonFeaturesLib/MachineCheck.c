@@ -1,7 +1,7 @@
 /** @file
   Machine Check features.
 
-  Copyright (c) 2017 - 2018, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2017 - 2019, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
@@ -287,7 +287,7 @@ LmceSupport (
 
   McgCap.Uint64 = AsmReadMsr64 (MSR_IA32_MCG_CAP);
   if (ProcessorNumber == 0) {
-    DEBUG ((EFI_D_INFO, "LMCE eanble = %x\n", (BOOLEAN) (McgCap.Bits.MCG_LMCE_P != 0)));
+    DEBUG ((DEBUG_INFO, "LMCE enable = %x\n", (BOOLEAN) (McgCap.Bits.MCG_LMCE_P != 0)));
   }
   return (BOOLEAN) (McgCap.Bits.MCG_LMCE_P != 0);
 }
@@ -319,10 +319,8 @@ LmceInitialize (
   IN BOOLEAN                           State
   )
 {
-  MSR_IA32_FEATURE_CONTROL_REGISTER    *MsrRegister;
-
   //
-  // The scope of FastStrings bit in the MSR_IA32_MISC_ENABLE is core for below processor type, only program
+  // The scope of LcmeOn bit in the MSR_IA32_MISC_ENABLE is core for below processor type, only program
   // MSR_IA32_MISC_ENABLE for thread 0 in each core.
   //
   if (IS_SILVERMONT_PROCESSOR (CpuInfo->DisplayFamily, CpuInfo->DisplayModel) ||
@@ -333,17 +331,14 @@ LmceInitialize (
     }
   }
 
-  ASSERT (ConfigData != NULL);
-  MsrRegister = (MSR_IA32_FEATURE_CONTROL_REGISTER *) ConfigData;
-  if (MsrRegister[ProcessorNumber].Bits.Lock == 0) {
-    CPU_REGISTER_TABLE_WRITE_FIELD (
-      ProcessorNumber,
-      Msr,
-      MSR_IA32_FEATURE_CONTROL,
-      MSR_IA32_FEATURE_CONTROL_REGISTER,
-      Bits.LmceOn,
-      (State) ? 1 : 0
-      );
-  }
+  CPU_REGISTER_TABLE_TEST_THEN_WRITE_FIELD (
+    ProcessorNumber,
+    Msr,
+    MSR_IA32_FEATURE_CONTROL,
+    MSR_IA32_FEATURE_CONTROL_REGISTER,
+    Bits.LmceOn,
+    (State) ? 1 : 0
+    );
+
   return RETURN_SUCCESS;
 }

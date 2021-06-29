@@ -15,13 +15,13 @@
 #include <openssl/asn1.h>
 #include <openssl/x509.h>
 #include <openssl/bio.h>
-#include <internal/x509_int.h>
+#include <crypto/x509.h>
 #include <openssl/pkcs7.h>
 #include <openssl/bn.h>
 #include <openssl/x509_vfy.h>
 #include <openssl/pem.h>
 #include <openssl/evp.h>
-#include <internal/asn1_int.h>
+#include <crypto/asn1.h>
 
 /**
   This function will return the leaf signer certificate in a chain.  This is
@@ -111,7 +111,7 @@ Exit:
   //
   // Release Resources
   //
-  if (Signers) {
+  if (Signers != NULL) {
     sk_X509_free (Signers);
   }
 
@@ -230,11 +230,11 @@ Exit:
   //
   // Release Resources
   //
-  if (ClonedCert) {
+  if (ClonedCert != NULL) {
     X509_free (ClonedCert);
   }
 
-  if (Eku) {
+  if (Eku != NULL) {
     sk_ASN1_OBJECT_pop_free (Eku, ASN1_OBJECT_free);
   }
 
@@ -281,13 +281,13 @@ CheckEKUs(
     //
     // Finding required EKU in cert.
     //
-    if (Asn1ToFind) {
+    if (Asn1ToFind != NULL) {
       ASN1_OBJECT_free(Asn1ToFind);
       Asn1ToFind = NULL;
     }
 
     Asn1ToFind = OBJ_txt2obj (RequiredEKUs[Index], 0);
-    if (!Asn1ToFind) {
+    if (Asn1ToFind == NULL) {
       //
       // Fail to convert required EKU to ASN1.
       //
@@ -313,7 +313,7 @@ CheckEKUs(
 
 Exit:
 
-  if (Asn1ToFind) {
+  if (Asn1ToFind != NULL) {
     ASN1_OBJECT_free(Asn1ToFind);
   }
 
@@ -508,11 +508,7 @@ Exit:
     free (SignedData);
   }
 
-  if (SignerCert) {
-    X509_free (SignerCert);
-  }
-
-  if (Pkcs7) {
+  if (Pkcs7 != NULL) {
     PKCS7_free (Pkcs7);
   }
 

@@ -1,103 +1,12 @@
 /** @file
   Dump Capsule image information.
 
-  Copyright (c) 2016 - 2019, Intel Corporation. All rights reserved.<BR>
+  Copyright (c) 2016 - 2020, Intel Corporation. All rights reserved.<BR>
   SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
 
-#include <PiDxe.h>
-#include <Library/BaseLib.h>
-#include <Library/DebugLib.h>
-#include <Library/BaseMemoryLib.h>
-#include <Library/MemoryAllocationLib.h>
-#include <Library/UefiBootServicesTableLib.h>
-#include <Library/UefiRuntimeServicesTableLib.h>
-#include <Library/UefiLib.h>
-#include <Library/PrintLib.h>
-#include <Library/FileHandleLib.h>
-#include <Library/SortLib.h>
-#include <Library/UefiBootManagerLib.h>
-#include <Library/DevicePathLib.h>
-#include <Protocol/FirmwareManagement.h>
-#include <Protocol/SimpleFileSystem.h>
-#include <Protocol/Shell.h>
-#include <Guid/ImageAuthentication.h>
-#include <Guid/CapsuleReport.h>
-#include <Guid/SystemResourceTable.h>
-#include <Guid/FmpCapsule.h>
-#include <Guid/CapsuleVendor.h>
-#include <IndustryStandard/WindowsUxCapsule.h>
-
-//
-// (20 * (6+5+2))+1) unicode characters from EFI FAT spec (doubled for bytes)
-//
-#define MAX_FILE_NAME_SIZE   522
-#define MAX_FILE_NAME_LEN    (MAX_FILE_NAME_SIZE / sizeof(CHAR16))
-
-/**
-  Read a file.
-
-  @param[in]  FileName        The file to be read.
-  @param[out] BufferSize      The file buffer size
-  @param[out] Buffer          The file buffer
-
-  @retval EFI_SUCCESS    Read file successfully
-  @retval EFI_NOT_FOUND  File not found
-**/
-EFI_STATUS
-ReadFileToBuffer (
-  IN  CHAR16                               *FileName,
-  OUT UINTN                                *BufferSize,
-  OUT VOID                                 **Buffer
-  );
-
-/**
-  Write a file.
-
-  @param[in] FileName        The file to be written.
-  @param[in] BufferSize      The file buffer size
-  @param[in] Buffer          The file buffer
-
-  @retval EFI_SUCCESS    Write file successfully
-**/
-EFI_STATUS
-WriteFileFromBuffer (
-  IN  CHAR16                               *FileName,
-  IN  UINTN                                BufferSize,
-  IN  VOID                                 *Buffer
-  );
-
-/**
-  Get shell protocol.
-
-  @return Pointer to shell protocol.
-
-**/
-EFI_SHELL_PROTOCOL *
-GetShellProtocol (
-  VOID
-  );
-
-/**
-  Get SimpleFileSystem from boot option file path.
-
-  @param[in]  DevicePath     The file path of boot option
-  @param[out] FullPath       The full device path of boot device
-  @param[out] Fs             The file system within EfiSysPartition
-
-  @retval EFI_SUCCESS    Get file system successfully
-  @retval EFI_NOT_FOUND  No valid file system found
-  @retval others         Get file system failed
-
-**/
-EFI_STATUS
-EFIAPI
-GetEfiSysPartitionFromBootOptionFilePath (
-  IN  EFI_DEVICE_PATH_PROTOCOL         *DevicePath,
-  OUT EFI_DEVICE_PATH_PROTOCOL         **FullPath,
-  OUT EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  **Fs
-  );
+#include "CapsuleApp.h"
 
 /**
   Validate if it is valid capsule header
@@ -129,7 +38,7 @@ DumpUxCapsule (
 {
   EFI_DISPLAY_CAPSULE                           *DisplayCapsule;
   DisplayCapsule = (EFI_DISPLAY_CAPSULE *)CapsuleHeader;
-  Print(L"[UxCapusule]\n");
+  Print(L"[UxCapsule]\n");
   Print(L"CapsuleHeader:\n");
   Print(L"  CapsuleGuid      - %g\n", &DisplayCapsule->CapsuleHeader.CapsuleGuid);
   Print(L"  HeaderSize       - 0x%x\n", DisplayCapsule->CapsuleHeader.HeaderSize);
@@ -187,8 +96,11 @@ DumpFmpCapsule (
     Print(L"  UpdateImageIndex       - 0x%x\n", FmpImageHeader->UpdateImageIndex);
     Print(L"  UpdateImageSize        - 0x%x\n", FmpImageHeader->UpdateImageSize);
     Print(L"  UpdateVendorCodeSize   - 0x%x\n", FmpImageHeader->UpdateVendorCodeSize);
-    if (FmpImageHeader->Version >= EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER_INIT_VERSION) {
+    if (FmpImageHeader->Version >= 2) {
       Print(L"  UpdateHardwareInstance - 0x%lx\n", FmpImageHeader->UpdateHardwareInstance);
+      if (FmpImageHeader->Version >= EFI_FIRMWARE_MANAGEMENT_CAPSULE_IMAGE_HEADER_INIT_VERSION) {
+        Print(L"  ImageCapsuleSupport    - 0x%lx\n", FmpImageHeader->ImageCapsuleSupport);
+      }
     }
   }
 }
@@ -290,7 +202,7 @@ DumpCapsule (
     DumpFmpCapsule(CapsuleHeader);
   }
   if (IsNestedFmpCapsule(CapsuleHeader)) {
-    Print(L"[NestedCapusule]\n");
+    Print(L"[NestedCapsule]\n");
     Print(L"CapsuleHeader:\n");
     Print(L"  CapsuleGuid      - %g\n", &CapsuleHeader->CapsuleGuid);
     Print(L"  HeaderSize       - 0x%x\n", CapsuleHeader->HeaderSize);
@@ -429,6 +341,7 @@ CHAR8 *mLastAttemptStatusString[] = {
   "Error: Auth Error",
   "Error: Power Event AC",
   "Error: Power Event Battery",
+  "Error: Unsatisfied Dependencies",
 };
 
 /**
@@ -709,7 +622,6 @@ SplitFileNameExtension (
 
 **/
 INTN
-EFIAPI
 CompareFileNameInAlphabet (
   IN VOID                         *Left,
   IN VOID                         *Right
@@ -812,8 +724,8 @@ DumpCapsuleFromDisk (
   //
   // Get file count first
   //
+  Status = FileHandleFindFirstFile (DirHandle, &FileInfo);
   do {
-    Status = FileHandleFindFirstFile (DirHandle, &FileInfo);
     if (EFI_ERROR (Status) || FileInfo == NULL) {
       Print (L"Get File Info Fail. Status = %r\n", Status);
       goto Done;
@@ -846,8 +758,8 @@ DumpCapsuleFromDisk (
   //
   // Get all file info
   //
+  Status = FileHandleFindFirstFile (DirHandle, &FileInfo);
   do {
-    Status = FileHandleFindFirstFile (DirHandle, &FileInfo);
     if (EFI_ERROR (Status) || FileInfo == NULL) {
       Print (L"Get File Info Fail. Status = %r\n", Status);
       goto Done;
@@ -1099,6 +1011,7 @@ DumpFmpImageInfo (
 {
   EFI_FIRMWARE_IMAGE_DESCRIPTOR                 *CurrentImageInfo;
   UINTN                                         Index;
+  UINTN                                         Index2;
 
   Print(L"  DescriptorVersion  - 0x%x\n", DescriptorVersion);
   Print(L"  DescriptorCount    - 0x%x\n", DescriptorCount);
@@ -1135,6 +1048,18 @@ DumpFmpImageInfo (
         Print(L"    LastAttemptVersion          - 0x%x\n", CurrentImageInfo->LastAttemptVersion);
         Print(L"    LastAttemptStatus           - 0x%x (%a)\n", CurrentImageInfo->LastAttemptStatus, LastAttemptStatusToString(CurrentImageInfo->LastAttemptStatus));
         Print(L"    HardwareInstance            - 0x%lx\n", CurrentImageInfo->HardwareInstance);
+        if (DescriptorVersion > 3) {
+          Print(L"    Dependencies                - ");
+          if (CurrentImageInfo->Dependencies == NULL) {
+            Print(L"NULL\n");
+          } else {
+            Index2 = 0;
+            do {
+              Print(L"%02x ", CurrentImageInfo->Dependencies->Dependencies[Index2]);
+            } while (CurrentImageInfo->Dependencies->Dependencies[Index2 ++] != EFI_FMP_DEP_END);
+            Print(L"\n");
+          }
+        }
       }
     }
     //

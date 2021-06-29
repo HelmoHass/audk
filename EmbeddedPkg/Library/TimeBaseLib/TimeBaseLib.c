@@ -1,7 +1,8 @@
 /** @file
 *
 *  Copyright (c) 2016, Hisilicon Limited. All rights reserved.
-*  Copyright (c) 2016, Linaro Limited. All rights reserved.
+*  Copyright (c) 2016-2019, Linaro Limited. All rights reserved.
+*  Copyright (c) 2021, Ampere Computing LLC. All rights reserved.
 *
 *  SPDX-License-Identifier: BSD-2-Clause-Patent
 *
@@ -13,8 +14,12 @@
 #include <Library/TimeBaseLib.h>
 
 /**
-  Converts Epoch seconds (elapsed since 1970 JANUARY 01, 00:00:00 UTC) to EFI_TIME
- **/
+  Converts Epoch seconds (elapsed since 1970 JANUARY 01, 00:00:00 UTC) to EFI_TIME.
+
+  @param  EpochSeconds   Epoch seconds.
+  @param  Time           The time converted to UEFI format.
+
+**/
 VOID
 EFIAPI
 EpochToEfiTime (
@@ -53,9 +58,9 @@ EpochToEfiTime (
   m  = (((da * 5) + 308) / 153) - 2;
   d  = da - (((m + 4) * 153) / 5) + 122;
 
-  Time->Year  = y - 4800 + ((m + 2) / 12);
+  Time->Year  = (UINT16)(y - 4800 + ((m + 2) / 12));
   Time->Month = ((m + 2) % 12) + 1;
-  Time->Day   = d + 1;
+  Time->Day   = (UINT8)(d + 1);
 
   ss = EpochSeconds % 60;
   a  = (EpochSeconds - ss) / 60;
@@ -63,16 +68,21 @@ EpochToEfiTime (
   b = (a - mm) / 60;
   hh = b % 24;
 
-  Time->Hour        = hh;
-  Time->Minute      = mm;
-  Time->Second      = ss;
+  Time->Hour        = (UINT8)hh;
+  Time->Minute      = (UINT8)mm;
+  Time->Second      = (UINT8)ss;
   Time->Nanosecond  = 0;
 
 }
 
 /**
-  Calculate Epoch days
- **/
+  Calculate Epoch days.
+
+  @param    Time  The UEFI time to be calculated.
+
+  @return   Number of days.
+
+**/
 UINTN
 EFIAPI
 EfiGetEpochDays (
@@ -96,9 +106,15 @@ EfiGetEpochDays (
 
   return EpochDays;
 }
+
 /**
-  Converts EFI_TIME to Epoch seconds (elapsed since 1970 JANUARY 01, 00:00:00 UTC)
- **/
+  Converts EFI_TIME to Epoch seconds (elapsed since 1970 JANUARY 01, 00:00:00 UTC).
+
+  @param    Time  The UEFI time to be converted.
+
+  @return   Number of seconds.
+
+**/
 UINTN
 EFIAPI
 EfiTimeToEpoch (
@@ -116,8 +132,13 @@ EfiTimeToEpoch (
 }
 
 /**
-  returns Day of the week [0-6] 0=Sunday
- **/
+  Get the day of the week from the UEFI time.
+
+  @param    Time  The UEFI time to be calculated.
+
+  @return   The day of the week: Sunday=0, Monday=1, ... Saturday=6
+
+**/
 UINTN
 EfiTimeToWday (
   IN  EFI_TIME  *Time
@@ -132,6 +153,15 @@ EfiTimeToWday (
   return (EpochDays + 4) % 7;
 }
 
+/**
+  Check if it is a leap year.
+
+  @param    Time  The UEFI time to be checked.
+
+  @retval   TRUE  It is a leap year.
+  @retval   FALSE It is NOT a leap year.
+
+**/
 BOOLEAN
 EFIAPI
 IsLeapYear (
@@ -153,6 +183,15 @@ IsLeapYear (
   }
 }
 
+/**
+  Check if the day in the UEFI time is valid.
+
+  @param    Time    The UEFI time to be checked.
+
+  @retval   TRUE    Valid.
+  @retval   FALSE   Invalid.
+
+**/
 BOOLEAN
 EFIAPI
 IsDayValid (
@@ -171,25 +210,78 @@ IsDayValid (
   return TRUE;
 }
 
+/**
+  Check if the time zone is valid.
+  Valid values are between -1440 and 1440 or 2047 (EFI_UNSPECIFIED_TIMEZONE).
+
+  @param    TimeZone    The time zone to be checked.
+
+  @retval   TRUE    Valid.
+  @retval   FALSE   Invalid.
+
+**/
 BOOLEAN
 EFIAPI
-IsTimeValid(
+IsValidTimeZone (
+  IN  INT16  TimeZone
+  )
+{
+  return TimeZone == EFI_UNSPECIFIED_TIMEZONE ||
+         (TimeZone >= -1440 && TimeZone <= 1440);
+}
+
+/**
+  Check if the daylight is valid.
+  Valid values are:
+    0 : Time is not affected.
+    1 : Time is affected, and has not been adjusted for daylight savings.
+    3 : Time is affected, and has been adjusted for daylight savings.
+  All other values are invalid.
+
+  @param    Daylight    The daylight to be checked.
+
+  @retval   TRUE    Valid.
+  @retval   FALSE   Invalid.
+
+**/
+BOOLEAN
+EFIAPI
+IsValidDaylight (
+  IN  INT8  Daylight
+  )
+{
+  return Daylight == 0 ||
+         Daylight == EFI_TIME_ADJUST_DAYLIGHT ||
+         Daylight == (EFI_TIME_ADJUST_DAYLIGHT | EFI_TIME_IN_DAYLIGHT);
+}
+
+/**
+  Check if the UEFI time is valid.
+
+  @param    Time    The UEFI time to be checked.
+
+  @retval   TRUE    Valid.
+  @retval   FALSE   Invalid.
+
+**/
+BOOLEAN
+EFIAPI
+IsTimeValid (
   IN EFI_TIME *Time
   )
 {
   // Check the input parameters are within the range specified by UEFI
-  if ((Time->Year   < 2000) ||
-     (Time->Year   > 2099) ||
-     (Time->Month  < 1   ) ||
-     (Time->Month  > 12  ) ||
-     (!IsDayValid (Time)    ) ||
-     (Time->Hour   > 23  ) ||
-     (Time->Minute > 59  ) ||
-     (Time->Second > 59  ) ||
-     (Time->Nanosecond > 999999999) ||
-     (!((Time->TimeZone == EFI_UNSPECIFIED_TIMEZONE) || ((Time->TimeZone >= -1440) && (Time->TimeZone <= 1440)))) ||
-     (Time->Daylight & (~(EFI_TIME_ADJUST_DAYLIGHT | EFI_TIME_IN_DAYLIGHT)))
-  ) {
+  if ((Time->Year  < 2000)              ||
+     (Time->Year   > 2099)              ||
+     (Time->Month  < 1   )              ||
+     (Time->Month  > 12  )              ||
+     (!IsDayValid (Time) )              ||
+     (Time->Hour   > 23  )              ||
+     (Time->Minute > 59  )              ||
+     (Time->Second > 59  )              ||
+     (Time->Nanosecond > 999999999)     ||
+     (!IsValidTimeZone(Time->TimeZone)) ||
+     (!IsValidDaylight(Time->Daylight))) {
     return FALSE;
   }
 
